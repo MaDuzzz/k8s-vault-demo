@@ -48,3 +48,7 @@ Pool có thể tune bằng `DB_POOL_MAX_SIZE`, `DB_POOL_MIN_IDLE`,
 Status API trả username, password fingerprint, provider, generation và timing
 ước tính; không bao giờ trả password thật. `VaultDynamicSecret` events/status là
 nguồn authoritative cho hoạt động VSO.
+
+Todo requests được log ở mức `INFO` theo dạng `method URI -> status (duration)`.
+Request body và credential không được ghi log; endpoint status polling cũng được
+bỏ qua để tránh làm ngập log.
