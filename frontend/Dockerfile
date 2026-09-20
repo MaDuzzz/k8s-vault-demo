@@ -2,7 +2,14 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --ignore-scripts; else npm install --ignore-scripts; fi
+# npm 10.x bundled with Node 22 can crash in Arborist peer resolution with
+# "Cannot read properties of null (reading 'edgesOut')". All peer packages are
+# declared explicitly, so legacy-peer-deps safely avoids that broken code path.
+RUN if [ -f package-lock.json ]; then \
+      npm ci --ignore-scripts --legacy-peer-deps; \
+    else \
+      npm install --ignore-scripts --legacy-peer-deps; \
+    fi
 COPY . .
 RUN npm run build
 
