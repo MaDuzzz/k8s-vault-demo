@@ -5,7 +5,8 @@ metadata:
   labels:
     app.kubernetes.io/part-of: k8s-vault-demo
 data:
-  DB_HOST: postgres
+  # scripts/deploy-k8s-app.sh replaces this with APP_DB_HOST from .env.
+  DB_HOST: postgres-docker-host.invalid
   DB_PORT: "5432"
   DB_NAME: todo
   DB_CREDENTIAL_USERNAME_FILE: /var/run/secrets/database-credentials/username

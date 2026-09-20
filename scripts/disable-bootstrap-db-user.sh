@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 command -v kubectl >/dev/null 2>&1 || { echo "Missing required command: kubectl" >&2; exit 1; }
 command -v openssl >/dev/null 2>&1 || { echo "Missing required command: openssl" >&2; exit 1; }
+command -v docker >/dev/null 2>&1 || { echo "Missing required command: docker" >&2; exit 1; }
 
 username_b64="$(kubectl -n vault-demo get secret todo-database-credentials \
   -o jsonpath='{.data.username}')"
@@ -13,7 +16,7 @@ if [[ "${username}" == "todo_bootstrap" ]]; then
   exit 1
 fi
 
-kubectl -n vault-demo exec postgres-0 -- \
+docker compose --project-directory "${ROOT_DIR}" -f "${ROOT_DIR}/docker-compose.yml" exec -T postgres \
   psql -v ON_ERROR_STOP=1 -U postgres -d todo \
   -c "ALTER ROLE todo_bootstrap NOLOGIN;" >/dev/null
 

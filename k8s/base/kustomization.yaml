@@ -7,7 +7,6 @@ resources:
   - namespace.yaml
   - serviceaccounts.yaml
   - app-config.yaml
-  - postgres.yaml
   - backend.yaml
   - frontend.yaml
 

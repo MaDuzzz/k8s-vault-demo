@@ -24,7 +24,7 @@ done
 vault status >/dev/null
 
 database_mount="database"
-database_name="${POSTGRES_DB_NAME:-todo}"
+database_name="todo"
 database_sslmode="${POSTGRES_SSLMODE:-disable}"
 
 if ! vault secrets list -format=json | jq -e --arg mount "${database_mount}/" 'has($mount)' >/dev/null; then

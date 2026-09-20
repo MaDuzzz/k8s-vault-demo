@@ -4,20 +4,23 @@ VSO_CHART_VERSION ?= 1.5.1
 BACKEND_IMAGE ?= todo-backend:demo
 FRONTEND_IMAGE ?= todo-frontend:demo
 
-.PHONY: help images lab-secrets app-deploy app-status postgres-expose \
+.PHONY: help images postgres-up postgres-status postgres-logs postgres-stop \
+	lab-secrets app-deploy app-status \
 	vault-db vault-smoke vso-install vault-k8s-auth vso-apply \
 	disable-bootstrap port-forward
 
 help:
 	@echo "Phase 1 - deploy and prove the application:"
+	@echo "  make postgres-up        Start PostgreSQL with Docker Compose"
+	@echo "  make postgres-status    Show PostgreSQL container health"
+	@echo "  make postgres-logs      Follow PostgreSQL logs"
 	@echo "  make images             Build backend/frontend images"
-	@echo "  make lab-secrets        Create PostgreSQL/bootstrap Secrets from .env"
-	@echo "  make app-deploy         Deploy PostgreSQL, backend and frontend"
+	@echo "  make lab-secrets        Create the app bootstrap Secret from .env"
+	@echo "  make app-deploy         Deploy backend and frontend to Kubernetes"
 	@echo "  make app-status         Show application resources"
 	@echo "  make port-forward       Expose frontend at http://127.0.0.1:8081"
 	@echo ""
 	@echo "Phase 2 - integrate the existing Vault cluster through VSO:"
-	@echo "  make postgres-expose    Apply optional lab-only PostgreSQL NodePort"
 	@echo "  make vault-db           Configure Vault database secrets engine"
 	@echo "  make vault-smoke        Test issue/login/revoke before VSO"
 	@echo "  make vso-install        Install Vault Secrets Operator and CRDs"
@@ -29,25 +32,29 @@ images:
 	docker build -t $(BACKEND_IMAGE) backend
 	docker build -t $(FRONTEND_IMAGE) frontend
 
+postgres-up:
+	docker compose up -d --wait postgres
+
+postgres-status:
+	docker compose ps postgres
+
+postgres-logs:
+	docker compose logs -f postgres
+
+postgres-stop:
+	docker compose stop postgres
+
 lab-secrets:
 	./scripts/prepare-k8s-secrets.sh
 
 app-deploy:
-	kubectl apply -k k8s/base
-	kubectl -n vault-demo set image deployment/backend backend=$(BACKEND_IMAGE)
-	kubectl -n vault-demo set image deployment/frontend frontend=$(FRONTEND_IMAGE)
-	kubectl -n vault-demo rollout status statefulset/postgres --timeout=180s
-	kubectl -n vault-demo rollout status deployment/backend --timeout=180s
-	kubectl -n vault-demo rollout status deployment/frontend --timeout=180s
+	BACKEND_IMAGE=$(BACKEND_IMAGE) FRONTEND_IMAGE=$(FRONTEND_IMAGE) ./scripts/deploy-k8s-app.sh
 
 app-status:
-	kubectl -n vault-demo get pod,svc,pvc,deploy,statefulset
+	kubectl -n vault-demo get pod,svc,deploy
 
 port-forward:
 	kubectl -n vault-demo port-forward service/frontend 8081:80
-
-postgres-expose:
-	kubectl apply -f k8s/addons/postgres-nodeport.yaml
 
 vault-db:
 	./scripts/configure-vault-database.sh
