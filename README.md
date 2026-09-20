@@ -115,10 +115,10 @@ make app-status
 `app-deploy` lấy `APP_DB_HOST`/`APP_DB_PORT` từ `.env`, cập nhật ConfigMap và
 restart backend để Pod kết nối PostgreSQL Docker.
 
-Frontend được expose bằng `NodePort/30080`:
+Frontend được expose bằng `NodePort/30085`:
 
 ```text
-http://<k8s-node-ip>:30080
+http://<k8s-node-ip>:30085
 ```
 
 Nếu không truy cập được NodePort từ máy local, dùng port-forward làm phương án
@@ -129,7 +129,7 @@ make port-forward
 # http://127.0.0.1:8081
 ```
 
-Chỉ mở firewall TCP `30080` cho mạng dùng để demo.
+Chỉ mở firewall TCP `30085` cho mạng dùng để demo.
 
 Thêm, sửa, xoá todo. Panel credential phải hiện `todo_bootstrap`, nguồn
 `Bootstrap Secret/...` và trạng thái `STATIC`.

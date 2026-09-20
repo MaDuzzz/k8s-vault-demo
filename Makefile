@@ -18,7 +18,7 @@ help:
 	@echo "  make lab-secrets        Create the app bootstrap Secret from .env"
 	@echo "  make app-deploy         Deploy backend and frontend to Kubernetes"
 	@echo "  make app-status         Show application resources"
-	@echo "  Frontend NodePort       http://<k8s-node-ip>:30080"
+	@echo "  Frontend NodePort       http://<k8s-node-ip>:30085"
 	@echo "  make port-forward       Fallback at http://127.0.0.1:8081"
 	@echo ""
 	@echo "Phase 2 - integrate the existing Vault cluster through VSO:"
