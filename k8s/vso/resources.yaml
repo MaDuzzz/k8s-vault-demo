@@ -3,7 +3,7 @@ kind: VaultConnection
 metadata:
   name: external-vault
 spec:
-  # scripts/apply-vso-integration.sh patches this with VAULT_ADDR.
+  # Patch this placeholder with the Vault address reachable from VSO Pods.
   address: https://vault.example.invalid:8200
 ---
 apiVersion: secrets.hashicorp.com/v1beta1

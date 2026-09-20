@@ -136,59 +136,17 @@ Thêm, sửa, xoá todo. Panel credential phải hiện `todo_bootstrap`, nguồ
 
 ## Phase 2 — tích hợp Vault bằng VSO
 
-Đăng nhập Vault bằng token có quyền cấu hình database secrets engine, auth
-method và policy:
+Phase này không dùng wrapper script hoặc target Makefile. Thực hiện từng lệnh
+`vault`, `helm` và `kubectl` để nhìn rõ bốn phần: Database Secrets Engine,
+Kubernetes Auth, VSO CRD và quá trình Secret được đồng bộ.
 
-```bash
-vault login
-make vault-db
-make vault-smoke
-```
+Làm theo tài liệu chi tiết:
 
-`vault-smoke` xin credential động, dùng credential đó kết nối vào PostgreSQL
-container, revoke lease rồi xác nhận login đã bị thu hồi.
+**[Phase 2 — VSO bằng từng lệnh imperative/declarative](docs/phase-2-vso-imperative.md)**
 
-Cài VSO và cấu hình Kubernetes auth:
-
-```bash
-make vso-install
-make vault-k8s-auth
-```
-
-Nếu kubeconfig dùng API endpoint `127.0.0.1`/`localhost`, đặt
-`KUBERNETES_HOST_FOR_VAULT` thành endpoint mà Vault nodes truy cập được.
-
-Bật dynamic secret:
-
-```bash
-make vso-apply
-make disable-bootstrap
-```
-
-VSO đọc `database/creds/todo-app`, cập nhật Secret
-`todo-database-credentials` và thêm marker `managed_by=vso`. Backend nhận thay
-đổi file, validate credential rồi chuyển connection pool. Chỉ disable
-`todo_bootstrap` sau khi `vso-apply` thành công.
-
-Theo dõi:
-
-```bash
-kubectl -n vault-demo get vaultconnection,vaultauth,vaultdynamicsecret
-kubectl -n vault-demo describe vaultdynamicsecret todo-database
-kubectl -n vault-demo get events --sort-by=.lastTimestamp
-kubectl -n vault-demo logs -f deployment/backend
-```
-
-TTL mặc định là 30 giây, max TTL 2 phút, VSO renew ở 67% TTL. Renew giữ nguyên
-username/password; khi lease không renew tiếp được, VSO lấy credential mới và
-cập nhật Secret.
-
-Xem password thật trong terminal dành riêng cho lab:
-
-```bash
-kubectl -n vault-demo get secret todo-database-credentials \
-  -o jsonpath='{.data.password}' | openssl base64 -d -A; echo
-```
+TTL mặc định là 30 giây, max TTL 2 phút và VSO renew ở 67% TTL. Tài liệu có cả
+lệnh test credential trực tiếp, revoke lease, xem VSO events/logs và tắt
+bootstrap login sau khi tích hợp thành công.
 
 ## Chuyển từ bản cũ có PostgreSQL trên Kubernetes
 
