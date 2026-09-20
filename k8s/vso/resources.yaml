@@ -1,0 +1,41 @@
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultConnection
+metadata:
+  name: external-vault
+spec:
+  # scripts/apply-vso-integration.sh patches this with VAULT_ADDR.
+  address: https://vault.example.invalid:8200
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultAuth
+metadata:
+  name: todo-vso-auth
+spec:
+  vaultConnectionRef: external-vault
+  method: kubernetes
+  mount: kubernetes-vso
+  kubernetes:
+    role: todo-app
+    serviceAccount: todo-vso-auth
+    audiences:
+      - vault
+    tokenExpirationSeconds: 600
+---
+apiVersion: secrets.hashicorp.com/v1beta1
+kind: VaultDynamicSecret
+metadata:
+  name: todo-database
+spec:
+  vaultAuthRef: todo-vso-auth
+  mount: database
+  path: creds/todo-app
+  renewalPercent: 67
+  revoke: true
+  destination:
+    # Phase 1 creates this Secret with bootstrap credentials. VSO takes it over.
+    create: false
+    name: todo-database-credentials
+    transformation:
+      templates:
+        managed_by:
+          text: vso

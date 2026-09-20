@@ -1,0 +1,21 @@
+# Optional: requires an installed ingress controller and local DNS/hosts entry.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: todo-app
+  namespace: vault-demo
+  labels:
+    app.kubernetes.io/part-of: k8s-vault-demo
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: todo-vault.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80

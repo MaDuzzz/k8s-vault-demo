@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app.kubernetes.io/name: todo-backend
+    app.kubernetes.io/part-of: k8s-vault-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: todo-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: todo-backend
+        app.kubernetes.io/part-of: k8s-vault-demo
+    spec:
+      serviceAccountName: todo-backend
+      automountServiceAccountToken: false
+      containers:
+        - name: backend
+          image: todo-backend:demo
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: todo-app-config
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: database-credentials
+              mountPath: /var/run/secrets/database-credentials
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 2
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: database-credentials
+          secret:
+            secretName: todo-database-credentials
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  labels:
+    app.kubernetes.io/name: todo-backend
+    app.kubernetes.io/part-of: k8s-vault-demo
+spec:
+  selector:
+    app.kubernetes.io/name: todo-backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
