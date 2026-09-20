@@ -8,11 +8,15 @@ async function request(path, options = {}) {
 
   if (!response.ok) {
     let message = `Yêu cầu thất bại (${response.status})`
-    try {
-      const payload = await response.json()
-      message = payload.message || payload.detail || message
-    } catch {
-      // The response does not contain a JSON problem body.
+    const responseBody = await response.text()
+    if (responseBody) {
+      try {
+        const payload = JSON.parse(responseBody)
+        message = payload.message || payload.detail || message
+      } catch {
+        // Spring's CORS rejection and nginx errors are commonly plain text.
+        message = responseBody
+      }
     }
     throw new Error(message)
   }
