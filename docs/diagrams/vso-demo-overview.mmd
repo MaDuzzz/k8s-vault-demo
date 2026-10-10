@@ -1,0 +1,31 @@
+flowchart LR
+    OP["Người vận hành<br/>Vault CLI"]
+
+    subgraph A["PHẦN A — Biến Vault thành credential factory"]
+        VDB["Vault Database Engine<br/>b_lab/config/todo-postgres"]
+        ROLE["Vault DB Role<br/>roles/todo-app<br/>TTL 30s · max TTL 2m"]
+        PG[("PostgreSQL Docker<br/>todo_app + dynamic login roles")]
+        VDB --> ROLE
+        VDB <-->|"admin connection<br/>CREATE / ALTER / DROP ROLE"| PG
+    end
+
+    subgraph B["PHẦN B — Đưa credential từ Vault vào ứng dụng"]
+        KAUTH["Vault Kubernetes Auth<br/>(nằm trong Vault)<br/>mount kubernetes-vso"]
+        VSO["Vault Secrets Operator"]
+        VCR["VaultConnection<br/>VaultAuth<br/>VaultDynamicSecret"]
+        SECRET["Kubernetes Secret<br/>todo-database-credentials"]
+        BE["Spring Boot backend<br/>projected files + hot-swap pool"]
+        FE["React frontend<br/>NodePort 30085"]
+        VCR --> VSO
+        VSO --> SECRET
+        SECRET --> BE
+        FE --> BE
+    end
+
+    OP -->|"1. Cấu hình DB engine và role"| VDB
+    OP -->|"2. Cấu hình Kubernetes auth"| KAUTH
+    VSO -->|"3. Login bằng ServiceAccount JWT"| KAUTH
+    KAUTH -->|"4. Cấp Vault token có policy todo-app"| VSO
+    VSO -->|"5. Đọc b_lab/creds/todo-app"| ROLE
+    ROLE -->|"6. Username + password + lease"| VSO
+    BE -->|"7. Kết nối bằng dynamic credential"| PG

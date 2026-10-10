@@ -27,14 +27,12 @@ metadata:
   name: todo-database
 spec:
   vaultAuthRef: todo-vso-auth
-  mount: database
+  mount: b_lab
   path: creds/todo-app
   renewalPercent: 67
   revoke: true
   destination:
-    # Phase 1 creates this Secret with bootstrap credentials. VSO takes it over.
     create: false
-    name: todo-database-credentials
     transformation:
       templates:
         managed_by:

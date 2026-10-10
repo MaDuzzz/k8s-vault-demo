@@ -1,0 +1,37 @@
+sequenceDiagram
+    autonumber
+    actor Operator as Người vận hành
+    participant K8s as Kubernetes API
+    participant VSO as Vault Secrets Operator
+    participant Vault as Vault HA
+    participant DB as PostgreSQL Docker
+    participant Secret as K8s Secret
+    participant Backend as Spring Boot
+    participant UI as Todo UI
+
+    Operator->>K8s: Apply ServiceAccount, RBAC và VSO CRs
+    VSO->>K8s: TokenRequest cho SA todo-vso-auth, audience=vault
+    K8s-->>VSO: ServiceAccount JWT ngắn hạn
+    VSO->>Vault: Login auth/kubernetes-vso/login
+    Vault->>K8s: TokenReview JWT qua reviewer credential
+    K8s-->>Vault: JWT hợp lệ, namespace và ServiceAccount
+    Vault-->>VSO: Vault token có policy todo-app
+    VSO->>Vault: Read b_lab/creds/todo-app
+    Vault->>DB: CREATE ROLE dynamic user
+    DB-->>Vault: Role được tạo
+    Vault-->>VSO: Username, password, lease 30s
+    VSO->>Secret: Update username, password, managed_by=vso
+    Secret-->>Backend: Kubelet cập nhật projected files
+    Backend->>DB: Validate credential và mở Hikari pool mới
+    Backend->>Backend: Atomically swap pool, drain pool cũ
+    UI->>Backend: POST /api/todos
+    Backend->>DB: INSERT bằng dynamic credential
+    DB-->>Backend: Thành công
+    Backend-->>UI: 201 Created
+
+    loop Renew ở 67% TTL; rotate khi chạm max TTL
+        VSO->>Vault: Renew lease hoặc request credential mới
+        Vault->>DB: ALTER VALID UNTIL hoặc CREATE/DROP ROLE
+        Vault-->>VSO: Lease đã renew hoặc credential mới
+        VSO->>Secret: Chỉ update khi dữ liệu credential đổi
+    end

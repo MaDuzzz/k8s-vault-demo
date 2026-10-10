@@ -1,5 +1,5 @@
 # The application can obtain and renew only its database lease.
-path "database/creds/todo-app" {
+path "b_lab/creds/todo-app" {
   capabilities = ["read"]
 }
 
