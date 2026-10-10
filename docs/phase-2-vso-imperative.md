@@ -36,10 +36,10 @@ và nơi tham chiếu; đổi biến shell không tự cập nhật manifest ho�
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | DB mount `d_lab`                            | `vault secrets enable -path`, các lệnh `config/roles/creds`, path trong `infra/vault/bootstrap/policies/todo-app.hcl`, `VaultDynamicSecret.spec.mount` |
 | DB config `todo-postgres`                   | Tên sau `config/` và `db_name` khi tạo DB role                                                                                                         |
-| DB role `todo-app`                          | `allowed_roles`, tên sau `roles/` và `creds/`, path trong policy, `VaultDynamicSecret.spec.path=creds/todo-app`                                        |
+| DB role `todo-roles`                        | `allowed_roles`, tên sau `roles/` và `creds/`, path trong policy, `VaultDynamicSecret.spec.path=creds/todo-roles`                                      |
 | Policy `todo-app`                           | Tên trong `vault policy write` và `policies` của Kubernetes auth role                                                                                  |
 | Auth mount `kubernetes-vso`                 | `vault auth enable -path`, đường dẫn `auth/...`, `VaultAuth.spec.mount`                                                                                |
-| Auth role `todo-app`                        | Tên sau `auth/kubernetes-vso/role/` và `VaultAuth.spec.kubernetes.role`                                                                                |
+| Auth role `todo-roles`                      | Tên sau `auth/kubernetes-vso/role/` và `VaultAuth.spec.kubernetes.role`                                                                                |
 | Namespace `vault-demo`                      | Namespace từ Phase 1, các lệnh `kubectl -n`, VSO kustomization, RBAC subject và `bound_service_account_namespaces`                                     |
 | ServiceAccount `todo-vso-auth`              | `serviceaccounts.yaml`, `bound_service_account_names`, `VaultAuth.spec.kubernetes.serviceAccount`                                                      |
 | Reviewer SA `vault-auth-reviewer`           | `serviceaccounts.yaml`, annotation của reviewer Secret và RBAC subject                                                                                 |
@@ -51,8 +51,8 @@ và nơi tham chiếu; đổi biến shell không tự cập nhật manifest ho�
 | Secret `todo-database-credentials`          | Secret từ Phase 1, `VaultDynamicSecret.spec.destination.name` và `backend.spec.template.spec.volumes[].secret.secretName`                              |
 | Database `todo`, PostgreSQL role `todo_app` | DB từ Phase 1, database trong connection URL/lệnh `psql`; role `todo_app` trong SQL creation template phải tồn tại từ Phase 1                          |
 
-> DB role, auth role và policy đều dùng tên `todo-app` cho dễ nhớ, nhưng là
-> ba đối tượng riêng. Chúng có thể khác tên nếu từng tham chiếu ở trên vẫn khớp.
+> DB role và auth role dùng tên `todo-roles`; policy vẫn là `todo-app`.
+> Đây là ba đối tượng riêng; từng tham chiếu ở trên phải khớp đúng đối tượng.
 > ServiceAccount và VaultAuth cũng là hai đối tượng riêng dù cùng tên.
 
 Sơ đồ tham khảo: [tổng quan](diagrams/vso-demo-overview.mmd) ·
@@ -115,44 +115,101 @@ variable:
 ```bash
 vault write d_lab/config/todo-postgres \
   plugin_name=postgresql-database-plugin \
-  allowed_roles=todo-app \
+  allowed_roles=todo-roles \
   connection_url="postgresql://{{username}}:{{password}}@${VAULT_DB_ADDRESS}/todo?sslmode=disable" \
   username=postgres \
   password="${POSTGRES_ADMIN_PASSWORD}" \
   verify_connection=true \
   max_open_connections=4 \
   max_connection_lifetime=0s
+
+sample: vault write d_lab/config/todo-postgres plugin_name=postgresql-database-plugin allowed_roles=todo-roles connection_url="postgresql://{{username}}:{{password}}@192.168.180.1:5432/todo?sslmode=disable" username=postgres password=adminpassword verify_connection=true max_open_connections=4 max_connection_lifetime=0s
+check_result: vault read d_lab/config/todo-postgres
 ```
 
 `verify_connection=true` buộc Vault kết nối DB ngay. Nếu lệnh này lỗi, kiểm tra
 route/firewall từ **Vault node** tới `${VAULT_DB_ADDRESS}` trước khi làm tiếp.
 
 > **Khớp tên:** `db_name` phải là config `todo-postgres` vừa tạo; tên role
-> `todo-app` phải có trong `allowed_roles`. SQL dùng PostgreSQL role
+> `todo-roles` phải có trong `allowed_roles`. SQL dùng PostgreSQL role
 > `todo_app` đã tạo ở Phase 1.
 
 Tạo dynamic role với TTL ngắn để dễ quan sát demo:
 
 ```bash
-vault write d_lab/roles/todo-app \
+vault write d_lab/roles/todo-roles \
   db_name=todo-postgres \
   default_ttl=30s \
   max_ttl=2m \
   creation_statements=@infra/vault/bootstrap/sql/create-user.sql \
   renew_statements=@infra/vault/bootstrap/sql/renew-user.sql \
   revocation_statements=@infra/vault/bootstrap/sql/revoke-user.sql
+
+sample: vault write d_lab/roles/todo-roles db_name=todo-postgres default_ttl=30s max_ttl=2m creation_statements=@infra/vault/bootstrap/sql/create-user.sql renew_statements=@infra/vault/bootstrap/sql/renew-user.sql revocation_statements=@infra/vault/bootstrap/sql/revoke-user.sql
+check_result: vault read d_lab/roles/todo-roles
 ```
+
+#### Ba file SQL làm gì?
+
+Vault dùng các template này để tạo, gia hạn và thu hồi user PostgreSQL.
+Cú pháp `@infra/...sql` trong lệnh trên yêu cầu Vault CLI đọc nội dung file
+local và gửi lên Vault; không cần chép file sang Vault node.
+
+`{{name}}`, `{{password}}`, `{{expiration}}` được Vault thay bằng username,
+password và thời điểm hết hạn thực tế. Giữ nguyên các placeholder này.
+
+**[create-user.sql](../infra/vault/bootstrap/sql/create-user.sql)** — chạy khi
+Vault cấp credential mới:
+
+```sql
+CREATE ROLE "{{name}}" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';
+GRANT todo_app TO "{{name}}";
+ALTER ROLE "{{name}}" SET ROLE TO 'todo_app';
+```
+
+- `CREATE ROLE ... LOGIN`: tạo user đăng nhập bằng password, có thời hạn.
+- `GRANT todo_app`: cho user trở thành thành viên role quyền ứng dụng đã tạo
+  ở Phase 1.
+- `SET ROLE`: cấu hình để phiên đăng nhập mới tự dùng role `todo_app`.
+  Object do app tạo sẽ thuộc `todo_app`, tránh phụ thuộc vào user tạm thời
+  khi Vault thu hồi user đó.
+
+**[renew-user.sql](../infra/vault/bootstrap/sql/renew-user.sql)** — chạy khi
+lease được gia hạn:
+
+```sql
+ALTER ROLE "{{name}}" VALID UNTIL '{{expiration}}';
+```
+
+Cập nhật hạn dùng password của user hiện tại; không đổi username/password.
+Lease chỉ được renew trong giới hạn `max_ttl`; sau đó cần credential mới.
+
+**[revoke-user.sql](../infra/vault/bootstrap/sql/revoke-user.sql)** — chạy khi
+Vault thu hồi lease, kể cả khi lease hết hạn:
+
+```sql
+DROP ROLE IF EXISTS "{{name}}";
+```
+
+Xóa user tạm thời; `IF EXISTS` tránh lỗi nếu user đã bị xóa. Membership và
+cấu hình riêng của user cũng được xóa. Lệnh này không chủ động ngắt các
+session DB đang mở; `VALID UNTIL` cũng chỉ kiểm soát đăng nhập bằng password.
+
+> **Khớp tên:** PostgreSQL role `todo_app` trong SQL phải tồn tại từ Phase 1.
+> Đây là role quyền DB (`NOLOGIN`), khác Vault DB role `todo-roles`.
+> Nếu đổi tên `todo_app`, sửa cả bootstrap PostgreSQL và hai dòng
+> `GRANT` / `SET ROLE` trong `create-user.sql`.
 
 Policy `todo-app` cho phép VSO đọc credential và quản lý lease:
 
 ```bash
-vault policy write todo-app infra/vault/bootstrap/policies/todo-app.hcl
+vault policy write todo-policy infra/vault/bootstrap/policies/todo-app.hcl
 ```
 
 ### A2. Kiểm tra dynamic credential bằng tay
 
 ```bash
-export DB_CREDS_JSON="$(vault read -format=json d_lab/creds/todo-app)"
+export DB_CREDS_JSON="$(vault read -format=json d_lab/creds/todo-roles)"
 export DB_LEASE_ID="$(printf '%s' "${DB_CREDS_JSON}" | jq -r '.lease_id')"
 export DB_USERNAME="$(printf '%s' "${DB_CREDS_JSON}" | jq -r '.data.username')"
 export DB_PASSWORD="$(printf '%s' "${DB_CREDS_JSON}" | jq -r '.data.password')"
@@ -278,7 +335,7 @@ vault write auth/kubernetes-vso/config \
 Bind namespace, ServiceAccount, audience và Vault policy:
 
 ```bash
-vault write auth/kubernetes-vso/role/todo-app \
+vault write auth/kubernetes-vso/role/todo-roles \
   bound_service_account_names=todo-vso-auth \
   bound_service_account_namespaces=vault-demo \
   audience=vault \
@@ -298,8 +355,8 @@ unset REVIEWER_JWT KUBERNETES_CA_CERT
 Đọc [resources.yaml](../k8s/vso/resources.yaml) và chú ý ba resource:
 
 - `VaultConnection`: endpoint Vault mà VSO Pod truy cập.
-- `VaultAuth`: mount `kubernetes-vso`, role `todo-app`, SA `todo-vso-auth`.
-- `VaultDynamicSecret`: đọc `d_lab/creds/todo-app` và cập nhật Secret phase 1.
+- `VaultAuth`: mount `kubernetes-vso`, role `todo-roles`, SA `todo-vso-auth`.
+- `VaultDynamicSecret`: đọc `d_lab/creds/todo-roles` và cập nhật Secret phase 1.
 
 > **Kiểm tra trước khi apply:** `destination.create=false` yêu cầu Secret
 > Phase 1 đã tồn tại và `destination.name=todo-database-credentials`. Nếu
@@ -408,11 +465,11 @@ kubectl -n vso-sys logs \
   deployment/vault-secrets-operator-controller-manager --tail=200
 
 # Vault có tạo credential DB được không?
-vault read d_lab/creds/todo-app
+vault read d_lab/creds/todo-roles
 
 # Vault Kubernetes auth role/config đã tồn tại chưa?
 vault read auth/kubernetes-vso/config
-vault read auth/kubernetes-vso/role/todo-app
+vault read auth/kubernetes-vso/role/todo-roles
 ```
 
 Phân loại lỗi theo hướng kết nối:
