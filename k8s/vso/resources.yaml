@@ -4,18 +4,19 @@ metadata:
   name: external-vault
 spec:
   # Patch this placeholder with the Vault address reachable from VSO Pods.
-  address: https://vault.example.invalid:8200
+  address: http://192.168.180.192:8200
+  skipTLSVerify: true
 ---
 apiVersion: secrets.hashicorp.com/v1beta1
 kind: VaultAuth
 metadata:
-  name: todo-vso-auth
+  name: todo-vso-auth-x
 spec:
   vaultConnectionRef: external-vault
   method: kubernetes
-  mount: kubernetes-vso
+  mount: k-vso
   kubernetes:
-    role: todo-app
+    role: todo-app-roles
     serviceAccount: todo-vso-auth
     audiences:
       - vault
@@ -26,13 +27,14 @@ kind: VaultDynamicSecret
 metadata:
   name: todo-database
 spec:
-  vaultAuthRef: todo-vso-auth
-  mount: b_lab
-  path: creds/todo-app
+  vaultAuthRef: todo-vso-auth-x
+  mount: todo-db
+  path: creds/todo-db-roles
   renewalPercent: 67
   revoke: true
   destination:
     create: false
+    name: todo-database-credentials
     transformation:
       templates:
         managed_by:

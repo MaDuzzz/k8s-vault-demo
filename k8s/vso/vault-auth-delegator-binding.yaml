@@ -9,4 +9,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: vault-auth-reviewer
-    namespace: vault-demo
+    namespace: todo-app

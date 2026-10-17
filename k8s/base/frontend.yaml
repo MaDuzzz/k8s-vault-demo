@@ -19,7 +19,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: frontend
-          image: todo-frontend:demo
+          image: 192.168.180.191:30081/k8s-vault-demo/fe-todo:demov1.0.2
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

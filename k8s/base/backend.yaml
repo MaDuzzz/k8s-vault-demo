@@ -20,11 +20,11 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: backend
-          image: todo-backend:demo
+          image: 192.168.180.191:30081/k8s-vault-demo/be-todo:demov1.0.2
           imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
-                name: todo-app-config
+                name: todo-app-cfgmap
           ports:
             - name: http
               containerPort: 8080

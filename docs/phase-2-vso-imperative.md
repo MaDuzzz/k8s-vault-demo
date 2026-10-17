@@ -102,10 +102,10 @@ Xem các secrets engine hiện tại:
 vault secrets list
 ```
 
-Nếu chưa có mount `d_lab/`, enable nó:
+Nếu chưa có mount `todo-db/`, enable nó:
 
 ```bash
-vault secrets enable -path=d_lab database
+vault secrets enable -path=todo-db database
 ```
 
 Khai báo kết nối từ Vault tới PostgreSQL Docker. `{{username}}` và
@@ -113,9 +113,9 @@ Khai báo kết nối từ Vault tới PostgreSQL Docker. `{{username}}` và
 variable:
 
 ```bash
-vault write d_lab/config/todo-postgres \
+vault write todo-db/config/todo-postgres \
   plugin_name=postgresql-database-plugin \
-  allowed_roles=todo-roles \
+  allowed_roles=todo-db-roles \
   connection_url="postgresql://{{username}}:{{password}}@${VAULT_DB_ADDRESS}/todo?sslmode=disable" \
   username=postgres \
   password="${POSTGRES_ADMIN_PASSWORD}" \
@@ -123,8 +123,23 @@ vault write d_lab/config/todo-postgres \
   max_open_connections=4 \
   max_connection_lifetime=0s
 
-sample: vault write d_lab/config/todo-postgres plugin_name=postgresql-database-plugin allowed_roles=todo-roles connection_url="postgresql://{{username}}:{{password}}@192.168.180.1:5432/todo?sslmode=disable" username=postgres password=adminpassword verify_connection=true max_open_connections=4 max_connection_lifetime=0s
-check_result: vault read d_lab/config/todo-postgres
+sample: vault write todo-db/config/todo-postgres plugin_name=postgresql-database-plugin allowed_roles=todo-db-roles connection_url="postgresql://{{username}}:{{password}}@192.168.180.1:5432/todo?sslmode=disable" username=postgres password=adminpassword verify_connection=true max_open_connections=4 max_connection_lifetime=0s
+check_result: vault read todo-db/config/todo-postgres
+```
+
+Tạo dynamic role với TTL ngắn để dễ quan sát demo:
+
+```bash
+vault write todo-db/roles/todo-db-roles \
+  db_name=todo-postgres \
+  default_ttl=30s \
+  max_ttl=2m \
+  creation_statements=@infra/vault/bootstrap/sql/create-user.sql \
+  renew_statements=@infra/vault/bootstrap/sql/renew-user.sql \
+  revocation_statements=@infra/vault/bootstrap/sql/revoke-user.sql
+
+sample: vault write todo-db/roles/todo-db-roles db_name=todo-postgres default_ttl=30s max_ttl=2m creation_statements=@infra/vault/bootstrap/sql/create-user.sql renew_statements=@infra/vault/bootstrap/sql/renew-user.sql revocation_statements=@infra/vault/bootstrap/sql/revoke-user.sql
+check_result: vault read todo-db/roles/todo-db-roles
 ```
 
 `verify_connection=true` buộc Vault kết nối DB ngay. Nếu lệnh này lỗi, kiểm tra
@@ -134,20 +149,6 @@ route/firewall từ **Vault node** tới `${VAULT_DB_ADDRESS}` trước khi làm
 > `todo-roles` phải có trong `allowed_roles`. SQL dùng PostgreSQL role
 > `todo_app` đã tạo ở Phase 1.
 
-Tạo dynamic role với TTL ngắn để dễ quan sát demo:
-
-```bash
-vault write d_lab/roles/todo-roles \
-  db_name=todo-postgres \
-  default_ttl=30s \
-  max_ttl=2m \
-  creation_statements=@infra/vault/bootstrap/sql/create-user.sql \
-  renew_statements=@infra/vault/bootstrap/sql/renew-user.sql \
-  revocation_statements=@infra/vault/bootstrap/sql/revoke-user.sql
-
-sample: vault write d_lab/roles/todo-roles db_name=todo-postgres default_ttl=30s max_ttl=2m creation_statements=@infra/vault/bootstrap/sql/create-user.sql renew_statements=@infra/vault/bootstrap/sql/renew-user.sql revocation_statements=@infra/vault/bootstrap/sql/revoke-user.sql
-check_result: vault read d_lab/roles/todo-roles
-```
 
 #### Ba file SQL làm gì?
 
@@ -209,12 +210,7 @@ vault policy write todo-policy infra/vault/bootstrap/policies/todo-app.hcl
 ### A2. Kiểm tra dynamic credential bằng tay
 
 ```bash
-export DB_CREDS_JSON="$(vault read -format=json d_lab/creds/todo-roles)"
-export DB_LEASE_ID="$(printf '%s' "${DB_CREDS_JSON}" | jq -r '.lease_id')"
-export DB_USERNAME="$(printf '%s' "${DB_CREDS_JSON}" | jq -r '.data.username')"
-export DB_PASSWORD="$(printf '%s' "${DB_CREDS_JSON}" | jq -r '.data.password')"
-
-printf 'Lease: %s\nUsername: %s\n' "${DB_LEASE_ID}" "${DB_USERNAME}"
+vault read todo-db/creds/todo-db-roles
 ```
 
 Đăng nhập PostgreSQL bằng credential vừa được Vault tạo:
@@ -275,7 +271,6 @@ kubectl get crd | grep secrets.hashicorp.com
 Apply từng nhóm tài nguyên:
 
 ```bash
-kubectl apply -f k8s/base/namespace.yaml
 kubectl -n vault-demo apply -f k8s/vso/serviceaccounts.yaml
 kubectl -n vault-demo apply -f k8s/vso/vault-token-reviewer-secret.yaml
 kubectl apply -f k8s/vso/vault-auth-delegator-binding.yaml
@@ -314,19 +309,21 @@ Xem auth methods hiện tại:
 vault auth list
 ```
 
-Nếu chưa có `kubernetes-vso/`, enable auth method:
+Nếu chưa có `k-vso/`, enable auth method:
 
 ```bash
-vault auth enable -path=kubernetes-vso kubernetes
+vault auth enable -path=k-vso kubernetes
 ```
 
 Cấu hình cách Vault gọi Kubernetes TokenReview:
 
 ```bash
-vault write auth/kubernetes-vso/config \
+vault write auth/k-vso/config \
   token_reviewer_jwt="${REVIEWER_JWT}" \
   kubernetes_host="${KUBERNETES_HOST_FOR_VAULT}" \
   kubernetes_ca_cert="${KUBERNETES_CA_CERT}"
+
+sample: vault write auth/k-vso/config token_reviewer_jwt="" kubernetes_host="https://192.168.180.100:6443" kubernetes_ca_cert=""
 ```
 
 > **Khớp giá trị:** ServiceAccount và namespace lấy từ B2; `policies` là
@@ -335,11 +332,11 @@ vault write auth/kubernetes-vso/config \
 Bind namespace, ServiceAccount, audience và Vault policy:
 
 ```bash
-vault write auth/kubernetes-vso/role/todo-roles \
+vault write auth/k-vso/role/todo-app-roles \
   bound_service_account_names=todo-vso-auth \
-  bound_service_account_namespaces=vault-demo \
+  bound_service_account_namespaces=todo-app \
   audience=vault \
-  policies=todo-app \
+  policies=todo-policy \
   token_ttl=10m \
   token_max_ttl=1h
 ```
@@ -470,6 +467,13 @@ vault read d_lab/creds/todo-roles
 # Vault Kubernetes auth role/config đã tồn tại chưa?
 vault read auth/kubernetes-vso/config
 vault read auth/kubernetes-vso/role/todo-roles
+
+kubectl exec etcd-master01 -n kube-system -- etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key \
+  get /registry/secrets/todo-app/todo-database-credentials | strings | grep -o '{"password".*}' | jq .
 ```
 
 Phân loại lỗi theo hướng kết nối:

@@ -1,6 +1,6 @@
 # VSO reads credentials; the backend reads the resulting Kubernetes Secret.
 # Match the database mount and role configured in Vault and VaultDynamicSecret.
-path "d_lab/creds/todo-roles" {
+path "todo-db/creds/todo-db-roles" {
   capabilities = ["read"]
 }
 
